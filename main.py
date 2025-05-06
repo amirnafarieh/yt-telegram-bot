@@ -109,7 +109,9 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     progress_msg = await query.message.reply_text("📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. 0%")
 
-    filename_template = f"{SAVE_PATH}/%(title)s.%(ext)s"
+    import uuid
+    unique_id = uuid.uuid4().hex
+    filename_template = f"{SAVE_PATH}/{unique_id}.%(ext)s"
 
     if choice == "mp3_128":
         cmd = f'yt-dlp --cookies cookies.txt -x --audio-format mp3 --audio-quality 0 -o "{filename_template}" "{url}"'
@@ -168,12 +170,12 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await process.wait()
 
-    files = sorted(os.listdir(SAVE_PATH), key=lambda x: os.path.getmtime(os.path.join(SAVE_PATH, x)), reverse=True)
-    if not files:
+    downloaded_file = next((f for f in os.listdir(SAVE_PATH) if f.startswith(unique_id)), None)
+    if not downloaded_file:
         await progress_msg.edit_text("❌ فایل پیدا نشد.")
         return
 
-    filepath = os.path.join(SAVE_PATH, files[0])
+    filepath = os.path.join(SAVE_PATH, downloaded_file)
 
     try:
         # ارسال فایل به Saved Messages شما (OWNER_ID)
