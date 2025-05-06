@@ -3,10 +3,8 @@ import subprocess
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
-# توکن و آی‌دی عددی خودت
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OWNER_ID = 130657071
-
 SAVE_PATH = "./downloads"
 os.makedirs(SAVE_PATH, exist_ok=True)
 
@@ -18,11 +16,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "فایل مستقیم به Saved Messages شما ارسال میشه ✅"
     )
 
-# گرفتن لینک یوتیوب و نمایش کیفیت‌ها
+# دریافت لینک و نمایش دکمه کیفیت‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "youtu" not in url:
-        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب ارسال کن.")
+        await update.message.reply_text("❌ لطفاً یک لینک معتبر یوتیوب بفرست.")
         return
 
     context.user_data["youtube_url"] = url
@@ -40,11 +38,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "✅ لینک دریافت شد. کیفیت رو انتخاب کن:",
+        "✅ لینک دریافت شد. کیفیت دلخواه رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# هندل انتخاب کیفیت و دانلود
+# دانلود و ارسال فایل به Saved Messages
 async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -57,22 +55,22 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(f"⬇️ در حال دانلود {choice.upper()} ... لطفاً صبر کن.")
 
-    # ساخت دستور yt-dlp
-    if choice.startswith("mp3"):
-        cmd = f'yt-dlp --no-mtime --no-cache-dir -x --audio-format mp3 --audio-quality 0 -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+    # انتخاب دستور yt-dlp با استفاده از cookies.txt
+    if choice == "mp3_128":
+        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -x --audio-format mp3 --audio-quality 0 -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
     elif choice == "mp4_360":
-        cmd = f'yt-dlp --no-mtime --no-cache-dir -f "best[ext=mp4][height<=360]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -f "best[ext=mp4][height<=360]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
     elif choice == "mp4_480":
-        cmd = f'yt-dlp --no-mtime --no-cache-dir -f "best[ext=mp4][height<=480]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -f "best[ext=mp4][height<=480]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
     elif choice == "mp4_720":
-        cmd = f'yt-dlp --no-mtime --no-cache-dir -f "best[ext=mp4][height<=720]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -f "best[ext=mp4][height<=720]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
     elif choice == "mp4_1080":
-        cmd = f'yt-dlp --no-mtime --no-cache-dir -f "best[ext=mp4][height<=1080]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -f "best[ext=mp4][height<=1080]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
     else:
         await query.message.reply_text("❌ انتخاب نامعتبر.")
         return
 
-    # اجرای yt-dlp و ثبت لاگ
+    # اجرای yt-dlp با گرفتن خروجی برای لاگ
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
         await query.message.reply_text(f"❌ خطا در دانلود:\n{result.stderr}")
@@ -81,7 +79,7 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # بررسی وجود فایل
     files = sorted(os.listdir(SAVE_PATH), key=lambda x: os.path.getmtime(os.path.join(SAVE_PATH, x)), reverse=True)
     if not files:
-        await query.message.reply_text("❌ دانلود موفق نبود، هیچ فایلی پیدا نشد.")
+        await query.message.reply_text("❌ دانلود موفق نبود، فایلی پیدا نشد.")
         return
 
     filepath = os.path.join(SAVE_PATH, files[0])
