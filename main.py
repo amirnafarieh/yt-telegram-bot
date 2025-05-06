@@ -109,7 +109,7 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cmd,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
-        text=True
+        encoding='utf-8'
     )
 
     percent = 0
