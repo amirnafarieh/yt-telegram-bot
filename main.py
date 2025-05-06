@@ -1,95 +1,147 @@
 import os
 import subprocess
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+import asyncio
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatMember
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHANNEL_USERNAME = "@amirnafarieh_co"
 SAVE_PATH = "./downloads"
 os.makedirs(SAVE_PATH, exist_ok=True)
 
+# بررسی عضویت در کانال
+async def is_user_subscribed(bot, user_id):
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        return member.status in [ChatMember.MEMBER, ChatMember.OWNER, ChatMember.ADMINISTRATOR]
+    except:
+        return False
+
 # پیام خوش‌آمد
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "سلام! 👋\n"
-        "لینک یوتیوب رو بفرست، بعد کیفیت MP3 یا MP4 رو انتخاب کن.\n"
-        "فایل برات همین‌جا ارسال می‌شه ✅"
-    )
+    user_id = update.effective_user.id
+    if not await is_user_subscribed(context.bot, user_id):
+        keyboard = [[InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")],
+                    [InlineKeyboardButton("✅ عضو شدم", callback_data="check_subscription")]]
+        await update.message.reply_text("برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
 
-# دریافت لینک و نمایش کیفیت‌ها
+    await update.message.reply_text("سلام! 👋\nلینک یوتیوب رو بفرست و بعد کیفیت دلخواه رو انتخاب کن.")
+
+# بررسی دوباره عضویت پس از کلیک "عضو شدم"
+async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+
+    if await is_user_subscribed(context.bot, user_id):
+        await query.edit_message_text("✅ عضویت تأیید شد. حالا لینک یوتیوب رو بفرست.")
+    else:
+        await query.edit_message_text("❌ هنوز عضو نیستی! لطفاً دوباره امتحان کن با زدن دکمه عضو شدم.")
+
+# گرفتن لینک و نمایش دکمه‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not await is_user_subscribed(context.bot, user_id):
+        keyboard = [[InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")],
+                    [InlineKeyboardButton("✅ عضو شدم", callback_data="check_subscription")]]
+        await update.message.reply_text("❗ برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
     url = update.message.text
     if "youtu" not in url:
-        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب ارسال کن.")
+        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب بفرست.")
         return
 
     context.user_data["youtube_url"] = url
 
     keyboard = [
-        [InlineKeyboardButton("🎧 MP3 128kbps (~3MB/min)", callback_data="mp3_128")],
-        [
-            InlineKeyboardButton("📽️ MP4 360p (~5MB/min)", callback_data="mp4_360"),
-            InlineKeyboardButton("📽️ MP4 480p (~8MB/min)", callback_data="mp4_480"),
-        ],
-        [
-            InlineKeyboardButton("📽️ MP4 720p (~15MB/min)", callback_data="mp4_720"),
-            InlineKeyboardButton("📽️ MP4 1080p (~25MB/min)", callback_data="mp4_1080"),
-        ],
+        [InlineKeyboardButton("🎧 MP3 128kbps", callback_data="mp3_128")],
+        [InlineKeyboardButton("📽️ MP4 360p", callback_data="mp4_360"),
+         InlineKeyboardButton("📽️ MP4 480p", callback_data="mp4_480")],
+        [InlineKeyboardButton("📽️ MP4 720p", callback_data="mp4_720"),
+         InlineKeyboardButton("📽️ MP4 1080p", callback_data="mp4_1080")],
     ]
 
     await update.message.reply_text(
-        "✅ لینک دریافت شد. حالا کیفیت رو انتخاب کن:",
+        "✅ لینک دریافت شد. لطفاً کیفیت فایل رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# هندل انتخاب کیفیت، دانلود و ارسال به خود کاربر
+# دانلود و نمایش نوار پیشرفت عددی
 async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+
+    if not await is_user_subscribed(context.bot, user_id):
+        await query.edit_message_text("❗ برای ادامه باید عضو کانال بشی.")
+        return
+
     choice = query.data
     url = context.user_data.get("youtube_url")
-    chat_id = query.from_user.id
+    chat_id = query.message.chat.id
 
     if not url:
         await query.edit_message_text("❌ لینک پیدا نشد.")
         return
 
-    await query.edit_message_text(f"⬇️ در حال دانلود {choice.upper()} ... لطفاً صبر کن.")
+    progress_msg = await query.message.reply_text("📦 آماده‌سازی فایل...")
+
+    filename_template = f"{SAVE_PATH}/%(title)s.%(ext)s"
 
     if choice == "mp3_128":
-        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -x --audio-format mp3 --audio-quality 0 -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -x --audio-format mp3 --audio-quality 0 -o "{filename_template}" "{url}"'
     elif choice == "mp4_360":
-        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -f "best[ext=mp4][height<=360]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=360]" -o "{filename_template}" "{url}"'
     elif choice == "mp4_480":
-        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -f "best[ext=mp4][height<=480]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=480]" -o "{filename_template}" "{url}"'
     elif choice == "mp4_720":
-        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -f "best[ext=mp4][height<=720]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=720]" -o "{filename_template}" "{url}"'
     elif choice == "mp4_1080":
-        cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -f "best[ext=mp4][height<=1080]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=1080]" -o "{filename_template}" "{url}"'
     else:
-        await query.message.reply_text("❌ انتخاب نامعتبر.")
+        await progress_msg.edit_text("❌ کیفیت نامعتبر.")
         return
 
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        await query.message.reply_text(f"❌ خطا در دانلود:\n{result.stderr}")
-        return
+    # اجرای yt-dlp با بروزرسانی پیام درصدی ساده
+    process = await asyncio.create_subprocess_shell(
+        cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        text=True
+    )
+
+    percent = 0
+    async for line in process.stdout:
+        if "%" in line:
+            parts = line.strip().split()
+            for p in parts:
+                if "%" in p:
+                    try:
+                        percent = int(p.strip().replace("%", "").split(".")[0])
+                        await progress_msg.edit_text(f"📦 آماده‌سازی فایل... {percent}%")
+                    except:
+                        continue
+
+    await process.wait()
 
     files = sorted(os.listdir(SAVE_PATH), key=lambda x: os.path.getmtime(os.path.join(SAVE_PATH, x)), reverse=True)
     if not files:
-        await query.message.reply_text("❌ فایلی پیدا نشد.")
+        await progress_msg.edit_text("❌ فایل پیدا نشد.")
         return
 
     filepath = os.path.join(SAVE_PATH, files[0])
 
     try:
         await context.bot.send_document(chat_id=chat_id, document=open(filepath, 'rb'))
-        await query.message.reply_text("✅ فایل با موفقیت ارسال شد.")
+        await progress_msg.edit_text("✅ فایل ارسال شد.")
     except Exception as e:
-        await query.message.reply_text(f"❌ خطا در ارسال فایل:\n{e}")
+        await progress_msg.edit_text(f"❌ خطا در ارسال فایل:\n{e}")
 
-# راه‌اندازی ربات
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.Regex("https?://"), handle_message))
+app.add_handler(CallbackQueryHandler(check_subscription, pattern="check_subscription"))
 app.add_handler(CallbackQueryHandler(handle_format))
 app.run_polling()
