@@ -108,9 +108,24 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     process = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        encoding='utf-8'
+        stderr=asyncio.subprocess.STDOUT
     )
+
+    percent = 0
+    while True:
+        line = await process.stdout.readline()
+        if not line:
+            break
+        decoded_line = line.decode("utf-8").strip()
+        if "%" in decoded_line and ("Downloading" in decoded_line or "[download]" in decoded_line):
+            for part in decoded_line.split():
+                if "%" in part:
+                    try:
+                        percent = int(float(part.replace("%", "").replace(",", ".")))
+                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... {percent}%")
+                        break
+                    except:
+                        continue
 
     percent = 0
     async for line in process.stdout:
