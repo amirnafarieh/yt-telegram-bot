@@ -163,4 +163,7 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.Regex("https?://"), handle_message))
 app.add_handler(CallbackQueryHandler(check_subscription, pattern="check_subscription"))
 app.add_handler(CallbackQueryHandler(handle_format))
-app.run_polling()
+import asyncio
+
+if __name__ == "__main__":
+    asyncio.run(app.run_polling())
