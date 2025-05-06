@@ -62,7 +62,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("📽️ MP4 480p", callback_data="mp4_480")],
         [InlineKeyboardButton("📽️ MP4 720p", callback_data="mp4_720"),
          InlineKeyboardButton("📽️ MP4 1080p", callback_data="mp4_1080")],
-        [InlineKeyboardButton("🌟 کیفیت اصلی (بالاترین ممکن)", callback_data="mp4_best")]
+        
     ]
 
     await update.message.reply_text(
@@ -94,16 +94,14 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if choice == "mp3_128":
         cmd = f'yt-dlp --cookies cookies.txt -x --audio-format mp3 --audio-quality 0 -o "{filename_template}" "{url}"'
     elif choice == "mp4_360":
-        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=360]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=360]+bestaudio[ext=m4a]/best[ext=mp4][height<=360]" -o "{filename_template}" "{url}"'
     elif choice == "mp4_480":
-        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=480]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]" -o "{filename_template}" "{url}"'
     elif choice == "mp4_720":
-        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=720]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]" -o "{filename_template}" "{url}"'
     elif choice == "mp4_1080":
-        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=1080]" -o "{filename_template}" "{url}"'
-    elif choice == "mp4_best":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo+bestaudio/best" -o "{filename_template}" "{url}"'
-    else:
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]" -o "{filename_template}" "{url}"'
+        else:
         await progress_msg.edit_text("❌ کیفیت نامعتبر.")
         return
 
