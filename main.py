@@ -124,7 +124,7 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif choice == "ig_mp4":
         url = context.user_data.get("media_url")
         cmd = f'yt-dlp -f mp4 -o "{filename_template}" "{url}"'
-        else:
+    else:
         await progress_msg.edit_text("❌ کیفیت نامعتبر.")
         return
 
