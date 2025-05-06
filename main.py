@@ -62,6 +62,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("📽️ MP4 480p", callback_data="mp4_480")],
         [InlineKeyboardButton("📽️ MP4 720p", callback_data="mp4_720"),
          InlineKeyboardButton("📽️ MP4 1080p", callback_data="mp4_1080")],
+        [InlineKeyboardButton("🌟 کیفیت اصلی (بالاترین ممکن)", callback_data="mp4_best")]
     ]
 
     await update.message.reply_text(
@@ -100,6 +101,8 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=720]" -o "{filename_template}" "{url}"'
     elif choice == "mp4_1080":
         cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=1080]" -o "{filename_template}" "{url}"'
+    elif choice == "mp4_best":
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo+bestaudio/best" -o "{filename_template}" "{url}"'
     else:
         await progress_msg.edit_text("❌ کیفیت نامعتبر.")
         return
