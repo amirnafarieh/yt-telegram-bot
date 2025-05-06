@@ -114,21 +114,21 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filename_template = f"{SAVE_PATH}/{unique_id}.%(ext)s"
 
     if choice == "mp3_128":
-        cmd = f'yt-dlp --cookies cookies.txt -x --audio-format mp3 --audio-quality 0 --postprocessor-args "-ar 44100" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -x --audio-format mp3 --audio-quality 0 --postprocessor-args "-ar 44100" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "mp4_360":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=360]+bestaudio[ext=m4a]/best[ext=mp4][height<=360]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=360]+bestaudio[ext=m4a]/best[ext=mp4][height<=360]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "mp4_480":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "mp4_720":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "mp4_1080":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "ig_mp3":
         url = context.user_data.get("media_url")
-        cmd = f'yt-dlp -x --audio-format mp3 --audio-quality 0 --postprocessor-args "-ar 44100" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp -x --audio-format mp3 --audio-quality 0 --postprocessor-args "-ar 44100" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "ig_mp4":
         url = context.user_data.get("media_url")
-        cmd = f'yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     else:
         await progress_msg.edit_text("❌ کیفیت نامعتبر.")
         return
@@ -193,4 +193,3 @@ import asyncio
 
 if __name__ == "__main__":
     asyncio.run(app.run_polling())
-
