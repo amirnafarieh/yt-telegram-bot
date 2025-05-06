@@ -4,7 +4,6 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-OWNER_ID = 130657071
 SAVE_PATH = "./downloads"
 os.makedirs(SAVE_PATH, exist_ok=True)
 
@@ -13,14 +12,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "سلام! 👋\n"
         "لینک یوتیوب رو بفرست، بعد کیفیت MP3 یا MP4 رو انتخاب کن.\n"
-        "فایل مستقیم به Saved Messages شما ارسال میشه ✅"
+        "فایل برات همین‌جا ارسال می‌شه ✅"
     )
 
-# دریافت لینک و نمایش دکمه کیفیت‌ها
+# دریافت لینک و نمایش کیفیت‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "youtu" not in url:
-        await update.message.reply_text("❌ لطفاً یک لینک معتبر یوتیوب بفرست.")
+        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب ارسال کن.")
         return
 
     context.user_data["youtube_url"] = url
@@ -38,16 +37,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "✅ لینک دریافت شد. کیفیت دلخواه رو انتخاب کن:",
+        "✅ لینک دریافت شد. حالا کیفیت رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# دانلود و ارسال فایل به Saved Messages
+# هندل انتخاب کیفیت، دانلود و ارسال به خود کاربر
 async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     choice = query.data
     url = context.user_data.get("youtube_url")
+    chat_id = query.from_user.id
 
     if not url:
         await query.edit_message_text("❌ لینک پیدا نشد.")
@@ -55,7 +55,6 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(f"⬇️ در حال دانلود {choice.upper()} ... لطفاً صبر کن.")
 
-    # انتخاب دستور yt-dlp با استفاده از cookies.txt
     if choice == "mp3_128":
         cmd = f'yt-dlp --cookies cookies.txt --no-mtime --no-cache-dir -x --audio-format mp3 --audio-quality 0 -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
     elif choice == "mp4_360":
@@ -70,24 +69,21 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("❌ انتخاب نامعتبر.")
         return
 
-    # اجرای yt-dlp با گرفتن خروجی برای لاگ
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
         await query.message.reply_text(f"❌ خطا در دانلود:\n{result.stderr}")
         return
 
-    # بررسی وجود فایل
     files = sorted(os.listdir(SAVE_PATH), key=lambda x: os.path.getmtime(os.path.join(SAVE_PATH, x)), reverse=True)
     if not files:
-        await query.message.reply_text("❌ دانلود موفق نبود، فایلی پیدا نشد.")
+        await query.message.reply_text("❌ فایلی پیدا نشد.")
         return
 
     filepath = os.path.join(SAVE_PATH, files[0])
 
-    # ارسال فایل به Saved Messages
     try:
-        await context.bot.send_document(chat_id=OWNER_ID, document=open(filepath, 'rb'))
-        await query.message.reply_text("✅ فایل به Saved Messages ارسال شد.")
+        await context.bot.send_document(chat_id=chat_id, document=open(filepath, 'rb'))
+        await query.message.reply_text("✅ فایل با موفقیت ارسال شد.")
     except Exception as e:
         await query.message.reply_text(f"❌ خطا در ارسال فایل:\n{e}")
 
