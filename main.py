@@ -98,7 +98,10 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     choice = query.data
-    url = context.user_data.get("youtube_url")
+    if choice.startswith("ig_"):
+        url = context.user_data.get("media_url")
+    else:
+        url = context.user_data.get("youtube_url")
 
     if not url:
         await query.edit_message_text("❌ لینک پیدا نشد.")
