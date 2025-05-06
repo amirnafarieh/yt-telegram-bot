@@ -4,19 +4,19 @@ from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+OWNER_ID = 130657071  # آی‌دی عددی تلگرام شما
 SAVE_PATH = "./downloads"
 os.makedirs(SAVE_PATH, exist_ok=True)
 
-# پیام خوش‌آمد و آموزش
+# پیام خوش‌آمد
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome = (
+    await update.message.reply_text(
         "سلام! 👋\n"
-        "من یه ربات دانلود یوتیوب هستم. فقط کافیه لینک ویدئو رو بفرستی 🎥\n"
-        "بعدش از بین کیفیت‌های MP3 یا MP4 انتخاب کن (حجم تقریبی هم کنارش نوشته شده)."
+        "فقط لینک یوتیوب رو بفرست و بعد کیفیت MP4 یا MP3 رو انتخاب کن.\n"
+        "فایل مستقیماً به Saved Messages شما ارسال می‌شه ✅"
     )
-    await update.message.reply_text(welcome)
 
-# گرفتن لینک و نمایش دکمه‌ها
+# دریافت لینک و نمایش دکمه کیفیت‌ها
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "youtu" not in url:
@@ -26,13 +26,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["youtube_url"] = url
 
     keyboard = [
-        [
-            InlineKeyboardButton("🎧 MP3 128kbps (~3MB/min)", callback_data="mp3_128"),
-            InlineKeyboardButton("🎧 MP3 192kbps (~4.5MB/min)", callback_data="mp3_192"),
-        ],
-        [
-            InlineKeyboardButton("🎧 MP3 256kbps (~6MB/min)", callback_data="mp3_256"),
-        ],
+        [InlineKeyboardButton("🎧 MP3 128kbps (~3MB/min)", callback_data="mp3_128")],
         [
             InlineKeyboardButton("📽️ MP4 360p (~5MB/min)", callback_data="mp4_360"),
             InlineKeyboardButton("📽️ MP4 480p (~8MB/min)", callback_data="mp4_480"),
@@ -44,11 +38,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "✅ لینک دریافت شد.\nلطفاً کیفیت دلخواه رو انتخاب کن:",
+        "✅ لینک دریافت شد. حالا کیفیت رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# دانلود با توجه به انتخاب کاربر
+# اجرای دانلود و ارسال به OWNER_ID
 async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -56,7 +50,7 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = context.user_data.get("youtube_url")
 
     if not url:
-        await query.edit_message_text("❌ لینک یوتیوب پیدا نشد. لطفاً دوباره لینک رو بفرست.")
+        await query.edit_message_text("❌ لینک پیدا نشد.")
         return
 
     await query.edit_message_text(f"⬇️ در حال دانلود {choice.upper()} ... لطفاً منتظر بمان.")
@@ -72,14 +66,20 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif choice == "mp4_1080":
         cmd = f'yt-dlp --no-mtime --no-cache-dir -f "best[ext=mp4][height<=1080]" -o "{SAVE_PATH}/%(title)s.%(ext)s" "{url}"'
     else:
-        await query.edit_message_text("❌ انتخاب نامعتبر.")
+        await query.edit_message_text("❌ انتخاب نامعتبر بود.")
         return
 
     subprocess.run(cmd, shell=True)
+
     files = sorted(os.listdir(SAVE_PATH), key=lambda x: os.path.getmtime(os.path.join(SAVE_PATH, x)), reverse=True)
     filepath = os.path.join(SAVE_PATH, files[0])
-    await query.message.reply_document(document=open(filepath, 'rb'))
-    await query.message.reply_text("✅ فایل با موفقیت ارسال شد.")
+
+    # ارسال فایل به آی‌دی شما (Saved Messages)
+    try:
+        await context.bot.send_document(chat_id=OWNER_ID, document=open(filepath, 'rb'))
+        await query.message.reply_text("✅ فایل با موفقیت به Saved Messages شما ارسال شد.")
+    except Exception as e:
+        await query.message.reply_text(f"❌ خطا در ارسال فایل: {e}")
 
 # راه‌اندازی ربات
 app = ApplicationBuilder().token(BOT_TOKEN).build()
