@@ -104,7 +104,7 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ لینک پیدا نشد.")
         return
 
-    progress_msg = await query.message.reply_text("📦 در حال آماده‌سازی فایل... 0%")
+    progress_msg = await query.message.reply_text("📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. 0%")
 
     filename_template = f"{SAVE_PATH}/%(title)s.%(ext)s"
 
@@ -146,7 +146,7 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if "%" in part:
                     try:
                         percent = int(float(part.replace("%", "").replace(",", ".")))
-                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... {percent}%")
+                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. {percent}%")
                         break
                     except:
                         continue
@@ -158,7 +158,7 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if "%" in part:
                     try:
                         percent = int(float(part.strip().replace("%", "").replace(",", ".")))
-                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... {percent}%")
+                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. {percent}%")
                         break
                     except:
                         continue
