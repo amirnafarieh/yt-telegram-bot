@@ -49,9 +49,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗ برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
+    url = update.message.text.strip()
+    context.user_data["media_url"] = url
+
+    if "instagram.com" in url:
+        keyboard = [
+            [InlineKeyboardButton("🎧 دریافت صدا (mp3)", callback_data="ig_mp3")],
+            [InlineKeyboardButton("📽️ دریافت ویدئو", callback_data="ig_mp4")]
+        ]
+        await update.message.reply_text("✅ لینک اینستاگرام دریافت شد. نوع فایل را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+    user_id = update.effective_user.id
+    if not await is_user_subscribed(context.bot, user_id):
+        keyboard = [[InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")],
+                    [InlineKeyboardButton("✅ عضو شدم", callback_data="check_subscription")]]
+        await update.message.reply_text("❗ برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
     url = update.message.text
     if "youtu" not in url:
-        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب بفرست.")
+        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب یا اینستاگرام بفرست.")
         return
 
     context.user_data["youtube_url"] = url
@@ -62,6 +79,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
          InlineKeyboardButton("📽️ MP4 480p", callback_data="mp4_480")],
         [InlineKeyboardButton("📽️ MP4 720p", callback_data="mp4_720"),
          InlineKeyboardButton("📽️ MP4 1080p", callback_data="mp4_1080")],
+        
     ]
 
     await update.message.reply_text(
@@ -80,30 +98,42 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     choice = query.data
-    url = context.user_data.get("youtube_url")
+    if choice.startswith("ig_"):
+        url = context.user_data.get("media_url")
+    else:
+        url = context.user_data.get("youtube_url")
 
     if not url:
         await query.edit_message_text("❌ لینک پیدا نشد.")
         return
 
-    progress_msg = await query.message.reply_text("📦 در حال آماده‌سازی فایل... 0%")
+    progress_msg = await query.message.reply_text("📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. 0%")
 
-    filename_template = f"{SAVE_PATH}/%(title)s.%(ext)s"
+    import uuid
+    unique_id = uuid.uuid4().hex
+    filename_template = f"{SAVE_PATH}/{unique_id}.%(ext)s"
 
     if choice == "mp3_128":
-        cmd = f'yt-dlp --cookies cookies.txt -x --audio-format mp3 --audio-quality 0 -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -x --audio-format mp3 --audio-quality 0 --postprocessor-args "-ar 44100" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "mp4_360":
-        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=360]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=360]+bestaudio[ext=m4a]/best[ext=mp4][height<=360]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "mp4_480":
-        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=480]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "mp4_720":
-        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=720]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     elif choice == "mp4_1080":
-        cmd = f'yt-dlp --cookies cookies.txt -f "best[ext=mp4][height<=1080]" -o "{filename_template}" "{url}"'
+        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
+    elif choice == "ig_mp3":
+        url = context.user_data.get("media_url")
+        cmd = f'yt-dlp -x --audio-format mp3 --audio-quality 0 --postprocessor-args "-ar 44100" --merge-output-format mp4 -o "{filename_template}" "{url}"'
+    elif choice == "ig_mp4":
+        url = context.user_data.get("media_url")
+        cmd = f'yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
     else:
         await progress_msg.edit_text("❌ کیفیت نامعتبر.")
         return
 
+    # اجرای yt-dlp با گرفتن خروجی برای نمایش درصد پیشرفت
     process = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -121,30 +151,45 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if "%" in part:
                     try:
                         percent = int(float(part.replace("%", "").replace(",", ".")))
-                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... {percent}%")
+                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. {percent}%")
+                        break
+                    except:
+                        continue
+
+    percent = 0
+    async for line in process.stdout:
+        if "%" in line and ("Downloading" in line or "[download]" in line):
+            for part in line.strip().split():
+                if "%" in part:
+                    try:
+                        percent = int(float(part.strip().replace("%", "").replace(",", ".")))
+                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. {percent}%")
                         break
                     except:
                         continue
 
     await process.wait()
 
-    files = sorted(os.listdir(SAVE_PATH), key=lambda x: os.path.getmtime(os.path.join(SAVE_PATH, x)), reverse=True)
-    if not files:
+    downloaded_file = next((f for f in os.listdir(SAVE_PATH) if f.startswith(unique_id)), None)
+    if not downloaded_file:
         await progress_msg.edit_text("❌ فایل پیدا نشد.")
         return
 
-    filepath = os.path.join(SAVE_PATH, files[0])
+    filepath = os.path.join(SAVE_PATH, downloaded_file)
 
     try:
+        # ارسال فایل به Saved Messages شما (OWNER_ID)
         await context.bot.send_document(chat_id=OWNER_ID, document=open(filepath, 'rb'))
         await progress_msg.edit_text("✅ فایل آماده دانلود است.\nبرای فایل جدید، لینک دیگری ارسال کنید.")
     except Exception as e:
         await progress_msg.edit_text(f"❌ خطا در ارسال فایل:\n{e}")
 
-# راه‌اندازی ربات
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.Regex("https?://"), handle_message))
 app.add_handler(CallbackQueryHandler(check_subscription, pattern="check_subscription"))
 app.add_handler(CallbackQueryHandler(handle_format))
-app.run_polling()
+import asyncio
+
+if __name__ == "__main__":
+    asyncio.run(app.run_polling())
