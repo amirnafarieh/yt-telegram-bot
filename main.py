@@ -49,9 +49,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❗ برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
+    url = update.message.text.strip()
+    context.user_data["media_url"] = url
+
+    if "instagram.com" in url:
+        keyboard = [
+            [InlineKeyboardButton("🎧 دریافت صدا (mp3)", callback_data="ig_mp3")],
+            [InlineKeyboardButton("📽️ دریافت ویدئو", callback_data="ig_mp4")]
+        ]
+        await update.message.reply_text("✅ لینک اینستاگرام دریافت شد. نوع فایل را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+    user_id = update.effective_user.id
+    if not await is_user_subscribed(context.bot, user_id):
+        keyboard = [[InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")],
+                    [InlineKeyboardButton("✅ عضو شدم", callback_data="check_subscription")]]
+        await update.message.reply_text("❗ برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
     url = update.message.text
     if "youtu" not in url:
-        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب بفرست.")
+        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب یا اینستاگرام بفرست.")
         return
 
     context.user_data["youtube_url"] = url
@@ -101,6 +118,12 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]" -o "{filename_template}" "{url}"'
     elif choice == "mp4_1080":
         cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]" -o "{filename_template}" "{url}"'
+    elif choice == "ig_mp3":
+        url = context.user_data.get("media_url")
+        cmd = f'yt-dlp -x --audio-format mp3 -o "{filename_template}" "{url}"'
+    elif choice == "ig_mp4":
+        url = context.user_data.get("media_url")
+        cmd = f'yt-dlp -f mp4 -o "{filename_template}" "{url}"'
         else:
         await progress_msg.edit_text("❌ کیفیت نامعتبر.")
         return
