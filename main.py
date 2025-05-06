@@ -6,6 +6,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_USERNAME = "@amirnafarieh_co"
+OWNER_ID = 130657071
 SAVE_PATH = "./downloads"
 os.makedirs(SAVE_PATH, exist_ok=True)
 
@@ -80,13 +81,12 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     choice = query.data
     url = context.user_data.get("youtube_url")
-    chat_id = query.message.chat.id
 
     if not url:
         await query.edit_message_text("❌ لینک پیدا نشد.")
         return
 
-    progress_msg = await query.message.reply_text("📦 آماده‌سازی فایل...")
+    progress_msg = await query.message.reply_text("📦 در حال آماده‌سازی فایل... 0%")
 
     filename_template = f"{SAVE_PATH}/%(title)s.%(ext)s"
 
@@ -104,7 +104,7 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await progress_msg.edit_text("❌ کیفیت نامعتبر.")
         return
 
-    # اجرای yt-dlp با بروزرسانی پیام درصدی ساده
+    # اجرای yt-dlp با گرفتن خروجی برای نمایش درصد پیشرفت
     process = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -114,13 +114,13 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     percent = 0
     async for line in process.stdout:
-        if "%" in line:
-            parts = line.strip().split()
-            for p in parts:
-                if "%" in p:
+        if "%" in line and ("Downloading" in line or "[download]" in line):
+            for part in line.strip().split():
+                if "%" in part:
                     try:
-                        percent = int(p.strip().replace("%", "").split(".")[0])
-                        await progress_msg.edit_text(f"📦 آماده‌سازی فایل... {percent}%")
+                        percent = int(float(part.strip().replace("%", "").replace(",", ".")))
+                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... {percent}%")
+                        break
                     except:
                         continue
 
@@ -134,8 +134,9 @@ async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     filepath = os.path.join(SAVE_PATH, files[0])
 
     try:
-        await context.bot.send_document(chat_id=chat_id, document=open(filepath, 'rb'))
-        await progress_msg.edit_text("✅ فایل ارسال شد.")
+        # ارسال فایل به Saved Messages شما (OWNER_ID)
+        await context.bot.send_document(chat_id=OWNER_ID, document=open(filepath, 'rb'))
+        await progress_msg.edit_text("✅ فایل آماده دانلود است.\nبرای فایل جدید، لینک دیگری ارسال کنید.")
     except Exception as e:
         await progress_msg.edit_text(f"❌ خطا در ارسال فایل:\n{e}")
 
