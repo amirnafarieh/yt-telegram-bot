@@ -22,32 +22,29 @@ def fix_persian_numbers(text):
 
 def extract_number(text):
     text = fix_persian_numbers(text)
-    text = text.strip()
-    try:
-        return float(text)
-    except:
-        match = re.search(r'(\d+)(\.\d+)?', text)
-        if match:
-            return float(match.group())
-    raise ValueError("no valid number found")
+    match = re.search(r'\d+(\.\d+)?', text)
+    if match:
+        return float(match.group())
+    else:
+        raise ValueError("no valid number found")
 
 def call_ai(prompt):
     headers = {
-        "Authorization": f"Bearer {os.getenv('GEMINI_API_KEY')}",
+        "Authorization": f"Bearer {os.getenv('COHERE_API_KEY')}",
         "Content-Type": "application/json"
     }
     data = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}]
+        "model": "command-r-plus",
+        "chat_history": [],
+        "message": prompt,
+        "temperature": 0.6,
+        "max_tokens": 1000
     }
-    response = requests.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + os.getenv('GEMINI_API_KEY'),
-        headers=headers,
-        json=data
-    )
+    response = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=data)
     if response.status_code != 200:
         print("AI ERROR:", response.status_code, response.text)
         raise Exception("AI request failed")
-    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+    return response.json()["text"]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("به ربات هوش مصنوعی باشگاه ماکوان خوش آمدی!\nلطفاً سنت رو وارد کن:")
@@ -60,7 +57,7 @@ async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("قدت به سانتی‌متر:")
         return HEIGHT
     except:
-        await update.message.reply_text("لطفاً عدد معتبر وارد کن.")
+        await update.message.reply_text("لطفاً فقط عدد وارد کن.")
         return AGE
 
 async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,7 +76,7 @@ async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data_dict[update.effective_user.id]["weight"] = weight
         await update.message.reply_text("در حال پردازش اطلاعات بدنی...")
         user = user_data_dict[update.effective_user.id]
-        prompt = f"""سن: {user['age']}, قد: {user['height']} سانتی‌متر, وزن: {user['weight']} کیلوگرم
+        prompt = f"""سن: {user['age']}، قد: {user['height']} سانتی‌متر، وزن: {user['weight']} کیلوگرم
 شاخص توده بدنی کاربر را محاسبه کن و فقط به این صورت پاسخ بده:
 - شاخص توده بدنی شما: عدد
 - شما باید حدود X کیلو وزن کم یا زیاد کنید.
