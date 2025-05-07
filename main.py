@@ -79,7 +79,7 @@ async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = f"""سن: {user['age']}، قد: {user['height']} سانتی‌متر، وزن: {user['weight']} کیلوگرم
 شاخص توده بدنی کاربر را محاسبه کن و فقط به این صورت پاسخ بده:
 - شاخص توده بدنی شما: عدد
-- شما باید حدود X کیلو وزن کم/زیاد کنید.
+- شما باید حدود X کیلو وزن کم یا زیاد کنید.
 - ورزش‌های مناسب برای شما:
 - لیست ۵ ورزش (فقط اسم‌ها، بدون هیچ توضیحی)"""
         response = call_ai(prompt)
@@ -140,8 +140,9 @@ async def handle_diet_next(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("از منوی زیر انتخاب کن:", reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("شروع دوباره", callback_data="restart")]
+    await query.edit_message_text("لطفاً مسیر مورد نظرت را انتخاب کن:", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("برنامه غذایی", callback_data="diet"),
+         InlineKeyboardButton("برنامه ورزشی", callback_data="workout")]
     ]))
     return MENU
 
