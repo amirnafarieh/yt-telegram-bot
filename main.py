@@ -2,23 +2,24 @@ import logging
 import os
 import requests
 import re
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, ConversationHandler, CallbackQueryHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes,
+    ConversationHandler, CallbackQueryHandler, filters
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-AGE, HEIGHT, WEIGHT, ASK_WEEKLY_PLAN, ASK_NEXT_WEEK = range(5)
+AGE, HEIGHT, WEIGHT, MENU, DIET, WORKOUT, GROCERY, DIET_NEXT = range(8)
 user_data_dict = {}
 
-# عدد فارسی به انگلیسی
 def fix_persian_numbers(text):
     persian_digits = "۰۱۲۳۴۵۶۷۸۹"
     english_digits = "0123456789"
     table = str.maketrans("".join(persian_digits), "".join(english_digits))
     return text.translate(table)
 
-# استخراج عدد از متن
 def extract_number(text):
     text = fix_persian_numbers(text)
     match = re.search(r'\d+(\.\d+)?', text)
@@ -27,29 +28,7 @@ def extract_number(text):
     else:
         raise ValueError("no valid number found")
 
-# درخواست اولیه به AI (BMI و ورزش)
-def prompt_bmi_and_sports(user_data):
-    prompt = f"""اطلاعات کاربر:
-سن: {user_data['age']} سال
-قد: {user_data['height']} سانتی‌متر
-وزن: {user_data['weight']} کیلوگرم
-
-فقط موارد زیر را بنویس:
-1. مقدار عددی BMI بدون هیچ توضیحی
-2. چند کیلو باید وزن کم کند یا اضافه کند
-3. ۵ ورزش مناسب فقط نام ورزش‌ها، بدون هیچ توضیح
-
-همه خروجی باید فارسی و لیستی باشد. هیچ توضیح اضافه یا تحلیل نده."""
-    return prompt
-
-# درخواست رژیم هفتگی
-def prompt_weekly_diet(week_num):
-    return f"""لطفاً یک برنامه رژیم غذایی دقیق برای هفته {week_num} بنویس.
-هر روز باید شامل صبحانه، ناهار، شام و میان‌وعده باشد.
-پاسخ فقط به زبان فارسی و ساختارمند باشد."""
-
-# تابع ارسال به Cohere
-def get_ai_response(prompt):
+def call_ai(prompt):
     headers = {
         "Authorization": f"Bearer {os.getenv('COHERE_API_KEY')}",
         "Content-Type": "application/json"
@@ -58,7 +37,7 @@ def get_ai_response(prompt):
         "model": "command-r-plus",
         "chat_history": [],
         "message": prompt,
-        "temperature": 0.7,
+        "temperature": 0.6,
         "max_tokens": 1000
     }
     response = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=data)
@@ -67,9 +46,8 @@ def get_ai_response(prompt):
         raise Exception("AI request failed")
     return response.json()["text"]
 
-# شروع گفتگو
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! لطفاً سنت را وارد کن:")
+    await update.message.reply_text("به ربات هوش مصنوعی باشگاه ماکوان خوش آمدی!\nلطفاً سنت رو وارد کن:")
     return AGE
 
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,7 +57,7 @@ async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("قدت به سانتی‌متر:")
         return HEIGHT
     except:
-        await update.message.reply_text("فقط عدد وارد کن. مثل 25")
+        await update.message.reply_text("لطفاً فقط عدد وارد کن.")
         return AGE
 
 async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -89,68 +67,88 @@ async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("وزنت به کیلوگرم:")
         return WEIGHT
     except:
-        await update.message.reply_text("فقط عدد وارد کن. مثل 170")
+        await update.message.reply_text("فقط عدد وارد کن.")
         return HEIGHT
 
 async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         weight = extract_number(update.message.text)
         user_data_dict[update.effective_user.id]["weight"] = weight
-        await update.message.reply_text("در حال محاسبه توسط هوش مصنوعی...")
-
-        user_data = user_data_dict[update.effective_user.id]
-        prompt = prompt_bmi_and_sports(user_data)
-        result = get_ai_response(prompt)
-
-        await update.message.reply_text(result)
-
-        # دکمه دریافت رژیم
-        keyboard = [[InlineKeyboardButton("بله", callback_data="yes_diet"),
-                     InlineKeyboardButton("خیر", callback_data="no_diet")]]
-        await update.message.reply_text("آیا مایل به دریافت رژیم غذایی هفتگی هستی؟", reply_markup=InlineKeyboardMarkup(keyboard))
-        return ASK_WEEKLY_PLAN
-    except:
-        await update.message.reply_text("فقط عدد وارد کن. مثل 70 یا 82.5")
+        await update.message.reply_text("در حال پردازش اطلاعات بدنی...")
+        user = user_data_dict[update.effective_user.id]
+        prompt = f"""سن: {user['age']}، قد: {user['height']} سانتی‌متر، وزن: {user['weight']} کیلوگرم
+شاخص توده بدنی کاربر را محاسبه کن و فقط به این صورت پاسخ بده:
+- شاخص توده بدنی شما: عدد
+- شما باید حدود X کیلو وزن کم/زیاد کنید.
+- ورزش‌های مناسب برای شما:
+- لیست ۵ ورزش (فقط اسم‌ها، بدون هیچ توضیحی)"""
+        response = call_ai(prompt)
+        await update.message.reply_text(response, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("برنامه غذایی", callback_data="diet"),
+             InlineKeyboardButton("برنامه ورزشی", callback_data="workout")]
+        ]))
+        return MENU
+    except Exception as e:
+        print("وزن خطا:", e)
+        await update.message.reply_text("لطفاً عدد معتبر وارد کن.")
         return WEIGHT
 
-# واکنش به درخواست رژیم هفته اول
-async def handle_weekly_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    if query.data == "diet":
+        prompt = "برنامه رژیم غذایی دقیق برای ۷ روز بنویس. فقط برای هر روز، صبحانه، ناهار، شام و میان‌وعده بنویس. توضیح اضافه نده."
+        context.user_data["diet_prompt"] = prompt
+        response = call_ai(prompt)
+        await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("تبدیل به لیست خرید", callback_data="grocery")],
+            [InlineKeyboardButton("برنامه هفته بعد", callback_data="diet_next")],
+            [InlineKeyboardButton("منوی اصلی", callback_data="main_menu")]
+        ]))
+        return DIET
+    elif query.data == "workout":
+        prompt = "برنامه تمرینی سبک ۷ روزه برای منزل بنویس. فقط تمرینات، بدون هیچ توضیح اضافی."
+        response = call_ai(prompt)
+        await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("برنامه هفته بعد", callback_data="workout_next")],
+            [InlineKeyboardButton("منوی اصلی", callback_data="main_menu")]
+        ]))
+        return WORKOUT
 
-    if query.data == "yes_diet":
-        await query.edit_message_text("در حال دریافت رژیم هفته اول از هوش مصنوعی...")
-        plan = get_ai_response(prompt_weekly_diet(1))
-        await context.bot.send_message(chat_id=query.message.chat_id, text=plan)
-
-        # دکمه هفته دوم
-        keyboard = [[InlineKeyboardButton("بله", callback_data="next_week"),
-                     InlineKeyboardButton("خیر", callback_data="restart")]]
-        await context.bot.send_message(chat_id=query.message.chat_id, text="آیا مایل به دریافت رژیم هفته دوم هستی؟", reply_markup=InlineKeyboardMarkup(keyboard))
-        return ASK_NEXT_WEEK
-    else:
-        await query.edit_message_text("باشه. بیایم از اول شروع کنیم.")
-        return await start(update, context)
-
-# واکنش به هفته دوم یا ریست
-async def handle_next_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_grocery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    diet_prompt = context.user_data.get("diet_prompt", "")
+    prompt = f"بر اساس این برنامه غذایی، یک لیست خرید برای ۷ روز تهیه کن:\n{diet_prompt}"
+    response = call_ai(prompt)
+    await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("برنامه هفته بعد", callback_data="diet_next")],
+        [InlineKeyboardButton("منوی اصلی", callback_data="main_menu")]
+    ]))
+    return GROCERY
 
-    if query.data == "next_week":
-        await query.edit_message_text("در حال دریافت رژیم هفته دوم...")
-        plan = get_ai_response(prompt_weekly_diet(2))
-        await context.bot.send_message(chat_id=query.message.chat_id, text=plan)
-        await context.bot.send_message(chat_id=query.message.chat_id, text="رژیم هفته دوم هم ارسال شد. برای شروع دوباره /start رو بزن.")
-        return ConversationHandler.END
-    else:
-        await query.edit_message_text("مکالمه از نو شروع می‌شه.")
-        return await start(update, context)
+async def handle_diet_next(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    prompt = "برنامه رژیم هفته دوم رو بنویس. فقط غذاها، بدون هیچ توضیحی."
+    response = call_ai(prompt)
+    await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("منوی اصلی", callback_data="main_menu")]
+    ]))
+    return DIET_NEXT
 
-# ریست دستی
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("مکالمه لغو شد.")
-    return ConversationHandler.END
+async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("از منوی زیر انتخاب کن:", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("شروع دوباره", callback_data="restart")]
+    ]))
+    return MENU
+
+async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    return await start(update, context)
 
 def main():
     TOKEN = os.getenv("BOT_TOKEN")
@@ -162,14 +160,20 @@ def main():
             AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_age)],
             HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_height)],
             WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weight)],
-            ASK_WEEKLY_PLAN: [CallbackQueryHandler(handle_weekly_plan)],
-            ASK_NEXT_WEEK: [CallbackQueryHandler(handle_next_week)],
+            MENU: [CallbackQueryHandler(handle_menu)],
+            DIET: [CallbackQueryHandler(handle_grocery, pattern="^grocery$"),
+                   CallbackQueryHandler(handle_diet_next, pattern="^diet_next$"),
+                   CallbackQueryHandler(handle_main_menu, pattern="^main_menu$")],
+            WORKOUT: [CallbackQueryHandler(handle_main_menu, pattern="^main_menu$")],
+            GROCERY: [CallbackQueryHandler(handle_diet_next, pattern="^diet_next$"),
+                      CallbackQueryHandler(handle_main_menu, pattern="^main_menu$")],
+            DIET_NEXT: [CallbackQueryHandler(handle_main_menu, pattern="^main_menu$")],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CallbackQueryHandler(handle_restart, pattern="^restart$")]
     )
 
     app.add_handler(conv_handler)
     app.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
