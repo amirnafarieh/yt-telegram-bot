@@ -1,195 +1,113 @@
-import os
-import subprocess
-import asyncio
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatMember
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+import logging
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL_USERNAME = "@amirnafarieh_co"
-OWNER_ID = 130657071
-SAVE_PATH = "./downloads"
-os.makedirs(SAVE_PATH, exist_ok=True)
+# Enable logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# بررسی عضویت در کانال
-async def is_user_subscribed(bot, user_id):
-    try:
-        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        return member.status in [ChatMember.MEMBER, ChatMember.OWNER, ChatMember.ADMINISTRATOR]
-    except:
-        return False
+# Conversation states
+AGE, HEIGHT, WEIGHT, SPORT_CONFIRM, DIET_CONFIRM = range(5)
 
-# پیام خوش‌آمد
+user_data_dict = {}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_user_subscribed(context.bot, user_id):
-        keyboard = [[InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")],
-                    [InlineKeyboardButton("✅ عضو شدم", callback_data="check_subscription")]]
-        await update.message.reply_text("برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
+    await update.message.reply_text("سلام! لطفاً سنت رو وارد کن:")
+    return AGE
 
-    await update.message.reply_text("سلام! 👋\nلینک یوتیوب رو بفرست و بعد کیفیت دلخواه رو انتخاب کن.")
+async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_data_dict[update.effective_user.id] = {"age": int(update.message.text)}
+    await update.message.reply_text("قدت رو به سانتی‌متر وارد کن:")
+    return HEIGHT
 
-# بررسی دوباره عضویت پس از کلیک "عضو شدم"
-async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_data_dict[update.effective_user.id]["height"] = int(update.message.text)
+    await update.message.reply_text("وزنت رو به کیلوگرم وارد کن:")
+    return WEIGHT
+
+async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_data_dict[update.effective_user.id]["weight"] = int(update.message.text)
+    data = user_data_dict[update.effective_user.id]
+    height_m = data["height"] / 100
+    bmi = data["weight"] / (height_m ** 2)
+    data["bmi"] = bmi
+
+    if bmi >= 25:
+        msg = f"شاخص توده بدنی (BMI) شما {bmi:.1f} است و شما اضافه وزن دارید."
+    elif bmi >= 18.5:
+        msg = f"شاخص توده بدنی (BMI) شما {bmi:.1f} است و در محدوده نرمال هستید."
+    else:
+        msg = f"شاخص توده بدنی (BMI) شما {bmi:.1f} است و شما کمبود وزن دارید."
+
+    await update.message.reply_text(msg)
+
+    keyboard = [[InlineKeyboardButton("بله", callback_data="yes_sport"),
+                 InlineKeyboardButton("خیر", callback_data="no_sport")]]
+    await update.message.reply_text("آیا مایل به دریافت پیشنهاد ورزشی هستی؟", reply_markup=InlineKeyboardMarkup(keyboard))
+    return SPORT_CONFIRM
+
+async def sport_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
 
-    if await is_user_subscribed(context.bot, user_id):
-        await query.edit_message_text("✅ عضویت تأیید شد. حالا لینک یوتیوب رو بفرست.")
+    if query.data == "yes_sport":
+        bmi = user_data_dict[query.from_user.id]["bmi"]
+        if bmi >= 25:
+            sport = "پیاده‌روی تند، دوچرخه‌سواری، شنا یا ایروبیک"
+        elif bmi < 18.5:
+            sport = "تمرینات مقاومتی و افزایش توده عضلانی"
+        else:
+            sport = "فعالیت بدنی منظم مثل یوگا و تمرینات ترکیبی"
+
+        await query.edit_message_text(f"پیشنهاد ورزشی: {sport}")
     else:
-        await query.edit_message_text("❌ هنوز عضو نیستی! لطفاً دوباره امتحان کن با زدن دکمه عضو شدم.")
+        await query.edit_message_text("درخواست ورزش نادیده گرفته شد.")
 
-# گرفتن لینک و نمایش دکمه‌ها
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_user_subscribed(context.bot, user_id):
-        keyboard = [[InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")],
-                    [InlineKeyboardButton("✅ عضو شدم", callback_data="check_subscription")]]
-        await update.message.reply_text("❗ برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
+    keyboard = [[InlineKeyboardButton("بله", callback_data="yes_diet"),
+                 InlineKeyboardButton("خیر", callback_data="no_diet")]]
+    await context.bot.send_message(chat_id=query.message.chat.id, text="آیا مایل به دریافت رژیم غذایی برای یک ماه آینده هستی؟", reply_markup=InlineKeyboardMarkup(keyboard))
+    return DIET_CONFIRM
 
-    url = update.message.text.strip()
-    context.user_data["media_url"] = url
-
-    if "instagram.com" in url:
-        keyboard = [
-            [InlineKeyboardButton("🎧 دریافت صدا (mp3)", callback_data="ig_mp3")],
-            [InlineKeyboardButton("📽️ دریافت ویدئو", callback_data="ig_mp4")]
-        ]
-        await update.message.reply_text("✅ لینک اینستاگرام دریافت شد. نوع فایل را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-    user_id = update.effective_user.id
-    if not await is_user_subscribed(context.bot, user_id):
-        keyboard = [[InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{CHANNEL_USERNAME.lstrip('@')}")],
-                    [InlineKeyboardButton("✅ عضو شدم", callback_data="check_subscription")]]
-        await update.message.reply_text("❗ برای استفاده از ربات لطفاً ابتدا در کانال عضو شوید:", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-
-    url = update.message.text
-    if "youtu" not in url:
-        await update.message.reply_text("❌ لطفاً لینک معتبر یوتیوب یا اینستاگرام بفرست.")
-        return
-
-    context.user_data["youtube_url"] = url
-
-    keyboard = [
-        [InlineKeyboardButton("🎧 MP3 128kbps", callback_data="mp3_128")],
-        [InlineKeyboardButton("📽️ MP4 360p", callback_data="mp4_360"),
-         InlineKeyboardButton("📽️ MP4 480p", callback_data="mp4_480")],
-        [InlineKeyboardButton("📽️ MP4 720p", callback_data="mp4_720"),
-         InlineKeyboardButton("📽️ MP4 1080p", callback_data="mp4_1080")],
-        
-    ]
-
-    await update.message.reply_text(
-        "✅ لینک دریافت شد. لطفاً کیفیت فایل رو انتخاب کن:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# دانلود و نمایش نوار پیشرفت عددی
-async def handle_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def diet_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
 
-    if not await is_user_subscribed(context.bot, user_id):
-        await query.edit_message_text("❗ برای ادامه باید عضو کانال بشی.")
-        return
-
-    choice = query.data
-    if choice.startswith("ig_"):
-        url = context.user_data.get("media_url")
+    if query.data == "yes_diet":
+        diet_plan = "\n".join([
+            "هفته اول: کاهش مصرف قند و چربی، مصرف سبزیجات و میوه بیشتر",
+            "هفته دوم: افزایش پروتئین و حذف غذاهای فرآوری‌شده",
+            "هفته سوم: وعده‌های منظم، نوشیدن آب کافی، پیاده‌روی روزانه",
+            "هفته چهارم: کنترل مقدار غذا، تنقلات سالم مثل مغزها"
+        ])
+        await query.edit_message_text(f"برنامه رژیم غذایی:\n{diet_plan}")
     else:
-        url = context.user_data.get("youtube_url")
+        await query.edit_message_text("درخواست رژیم نادیده گرفته شد.")
 
-    if not url:
-        await query.edit_message_text("❌ لینک پیدا نشد.")
-        return
+    return ConversationHandler.END
 
-    progress_msg = await query.message.reply_text("📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. 0%")
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("مکالمه لغو شد.")
+    return ConversationHandler.END
 
-    import uuid
-    unique_id = uuid.uuid4().hex
-    filename_template = f"{SAVE_PATH}/{unique_id}.%(ext)s"
+def main():
+    import os
+    TOKEN = os.getenv("BOT_TOKEN")  # Set this in Railway
+    app = ApplicationBuilder().token(TOKEN).build()
 
-    if choice == "mp3_128":
-        cmd = f'yt-dlp --cookies cookies.txt -x --audio-format mp3 --audio-quality 0 --postprocessor-args "-ar 44100" --merge-output-format mp4 -o "{filename_template}" "{url}"'
-    elif choice == "mp4_360":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=360]+bestaudio[ext=m4a]/best[ext=mp4][height<=360]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
-    elif choice == "mp4_480":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=480]+bestaudio[ext=m4a]/best[ext=mp4][height<=480]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
-    elif choice == "mp4_720":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
-    elif choice == "mp4_1080":
-        cmd = f'yt-dlp --cookies cookies.txt -f "bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4][height<=1080]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
-    elif choice == "ig_mp3":
-        url = context.user_data.get("media_url")
-        cmd = f'yt-dlp -x --audio-format mp3 --audio-quality 0 --postprocessor-args "-ar 44100" --merge-output-format mp4 -o "{filename_template}" "{url}"'
-    elif choice == "ig_mp4":
-        url = context.user_data.get("media_url")
-        cmd = f'yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]" --merge-output-format mp4 -o "{filename_template}" "{url}"'
-    else:
-        await progress_msg.edit_text("❌ کیفیت نامعتبر.")
-        return
-
-    # اجرای yt-dlp با گرفتن خروجی برای نمایش درصد پیشرفت
-    process = await asyncio.create_subprocess_shell(
-        cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_age)],
+            HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_height)],
+            WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weight)],
+            SPORT_CONFIRM: [CallbackQueryHandler(sport_confirm)],
+            DIET_CONFIRM: [CallbackQueryHandler(diet_confirm)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    percent = 0
-    while True:
-        line = await process.stdout.readline()
-        if not line:
-            break
-        decoded_line = line.decode("utf-8").strip()
-        if "%" in decoded_line and ("Downloading" in decoded_line or "[download]" in decoded_line):
-            for part in decoded_line.split():
-                if "%" in part:
-                    try:
-                        percent = int(float(part.replace("%", "").replace(",", ".")))
-                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. {percent}%")
-                        break
-                    except:
-                        continue
+    app.add_handler(conv_handler)
+    app.run_polling()
 
-    percent = 0
-    async for line in process.stdout:
-        if "%" in line and ("Downloading" in line or "[download]" in line):
-            for part in line.strip().split():
-                if "%" in part:
-                    try:
-                        percent = int(float(part.strip().replace("%", "").replace(",", ".")))
-                        await progress_msg.edit_text(f"📦 در حال آماده‌سازی فایل... لطفاً کمی صبر کنید. {percent}%")
-                        break
-                    except:
-                        continue
-
-    await process.wait()
-
-    downloaded_file = next((f for f in os.listdir(SAVE_PATH) if f.startswith(unique_id)), None)
-    if not downloaded_file:
-        await progress_msg.edit_text("❌ فایل پیدا نشد.")
-        return
-
-    filepath = os.path.join(SAVE_PATH, downloaded_file)
-
-    try:
-        # ارسال فایل به Saved Messages شما (OWNER_ID)
-        await context.bot.send_document(chat_id=OWNER_ID, document=open(filepath, 'rb'))
-        await progress_msg.edit_text("✅ فایل آماده دانلود است.\nبرای فایل جدید، لینک دیگری ارسال کنید.")
-    except Exception as e:
-        await progress_msg.edit_text(f"❌ خطا در ارسال فایل:\n{e}")
-
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.Regex("https?://"), handle_message))
-app.add_handler(CallbackQueryHandler(check_subscription, pattern="check_subscription"))
-app.add_handler(CallbackQueryHandler(handle_format))
-import asyncio
-
-if __name__ == "__main__":
-    asyncio.run(app.run_polling())
+if __name__ == '__main__':
+    main()
