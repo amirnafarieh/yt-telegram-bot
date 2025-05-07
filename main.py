@@ -1,4 +1,3 @@
-
 import logging
 import os
 import requests
@@ -40,16 +39,18 @@ def call_ai(prompt):
     data = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}]
     }
-    response = requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + os.getenv('GEMINI_API_KEY'),
-                             headers=headers, json=data)
+    response = requests.post(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + os.getenv('GEMINI_API_KEY'),
+        headers=headers,
+        json=data
+    )
     if response.status_code != 200:
         print("AI ERROR:", response.status_code, response.text)
         raise Exception("AI request failed")
     return response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("به ربات هوش مصنوعی باشگاه ماکوان خوش آمدی!
-لطفاً سنت رو وارد کن:")
+    await update.message.reply_text("به ربات هوش مصنوعی باشگاه ماکوان خوش آمدی!\nلطفاً سنت رو وارد کن:")
     return AGE
 
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,12 +79,12 @@ async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data_dict[update.effective_user.id]["weight"] = weight
         await update.message.reply_text("در حال پردازش اطلاعات بدنی...")
         user = user_data_dict[update.effective_user.id]
-        prompt = f"سن: {user['age']}, قد: {user['height']} سانتی‌متر, وزن: {user['weight']} کیلوگرم
+        prompt = f"""سن: {user['age']}, قد: {user['height']} سانتی‌متر, وزن: {user['weight']} کیلوگرم
 شاخص توده بدنی کاربر را محاسبه کن و فقط به این صورت پاسخ بده:
 - شاخص توده بدنی شما: عدد
 - شما باید حدود X کیلو وزن کم یا زیاد کنید.
 - ورزش‌های مناسب برای شما:
-- لیست ۵ ورزش (فقط اسم‌ها، بدون هیچ توضیحی)"
+- لیست ۵ ورزش (فقط اسم‌ها، بدون هیچ توضیحی)"""
         response = call_ai(prompt)
         await update.message.reply_text(response, reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("برنامه غذایی", callback_data="diet"),
@@ -121,8 +122,7 @@ async def handle_grocery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     diet_prompt = context.user_data.get("diet_prompt", "")
-    prompt = f"بر اساس این برنامه غذایی، یک لیست خرید برای ۷ روز تهیه کن:
-{diet_prompt}"
+    prompt = f"بر اساس این برنامه غذایی، یک لیست خرید برای ۷ روز تهیه کن:\n{diet_prompt}"
     response = call_ai(prompt)
     await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("برنامه هفته بعد", callback_data="diet_next")],
