@@ -4,17 +4,22 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, ConversationHandler, filters
 
-# تنظیمات لاگ
+# فعال‌سازی لاگ‌ها
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # وضعیت‌ها
 AGE, HEIGHT, WEIGHT = range(3)
-
-# دیتای کاربران
 user_data_dict = {}
 
-# 📡 تابع درخواست به Cohere
+# 🔤 تابع تبدیل اعداد فارسی به انگلیسی
+def fix_persian_numbers(text):
+    persian_digits = "۰۱۲۳۴۵۶۷۸۹"
+    english_digits = "0123456789"
+    table = str.maketrans("".join(persian_digits), "".join(english_digits))
+    return text.translate(table)
+
+# 📡 ارتباط با Cohere
 def get_full_response_from_ai(user_data):
     prompt = f"""اطلاعات کاربر:
 سن: {user_data['age']} سال
@@ -25,7 +30,7 @@ def get_full_response_from_ai(user_data):
 1. محاسبه شاخص توده بدنی (BMI) و توضیح اینکه آیا کاربر اضافه وزن دارد یا کمبود وزن یا نرمال است.
 2. بر اساس BMI، یک یا چند ورزش مناسب برای این فرد پیشنهاد بده.
 3. یک رژیم غذایی دقیق برای 7 روز هفته بنویس. برای هر روز، صبحانه، ناهار، شام و میان‌وعده‌های مشخص بنویس.
-همه مطالب باید ساختاریافته، علمی، قابل درک و کاربردی باشند.
+خروجی باید ساختاریافته، علمی، و قابل درک باشد.
 """
 
     headers = {
@@ -48,49 +53,59 @@ def get_full_response_from_ai(user_data):
 
     return response.json()["text"]
 
-# شروع ربات
+# 👤 مرحله سن
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! لطفاً سنت را وارد کن (مثلاً 28):")
+    await update.message.reply_text("سلام! لطفاً سنت را وارد کن (مثلاً ۲۵):")
     return AGE
 
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        user_data_dict[update.effective_user.id] = {"age": int(update.message.text)}
-        await update.message.reply_text("حالا لطفاً قدت رو به سانتی‌متر وارد کن (مثلاً 170):")
+        text = fix_persian_numbers(update.message.text.strip())
+        age = int(float(text))
+        user_data_dict[update.effective_user.id] = {"age": age}
+        await update.message.reply_text("قدت را به سانتی‌متر وارد کن (مثلاً ۱۷۵):")
         return HEIGHT
     except:
-        await update.message.reply_text("لطفاً یک عدد معتبر برای سن وارد کن.")
+        await update.message.reply_text("❗ لطفاً سن را فقط با عدد وارد کن. مثلاً 25")
         return AGE
 
+# 👤 مرحله قد
 async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        user_data_dict[update.effective_user.id]["height"] = int(update.message.text)
-        await update.message.reply_text("عالی! حالا وزنت رو به کیلوگرم وارد کن (مثلاً 70):")
+        text = fix_persian_numbers(update.message.text.strip())
+        height = float(text)
+        user_data_dict[update.effective_user.id]["height"] = height
+        await update.message.reply_text("وزنت را به کیلوگرم وارد کن (مثلاً ۷۲ یا ۷۲.۵):")
         return WEIGHT
     except:
-        await update.message.reply_text("لطفاً عدد معتبری برای قد وارد کن.")
+        await update.message.reply_text("❗ لطفاً قد را فقط با عدد وارد کن. مثلاً 170")
         return HEIGHT
 
+# 👤 مرحله وزن و دریافت پاسخ از AI
 async def get_weight_and_generate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        user_data_dict[update.effective_user.id]["weight"] = int(update.message.text)
-        await update.message.reply_text("در حال تهیه برنامه‌ی شخصی‌سازی‌شده از هوش مصنوعی... لطفاً صبر کن ⏳")
+        text = fix_persian_numbers(update.message.text.strip())
+        weight = float(text)
+        user_data_dict[update.effective_user.id]["weight"] = weight
+
+        await update.message.reply_text("در حال تهیه برنامه شخصی از هوش مصنوعی... لطفاً چند لحظه صبر کنید ⏳")
 
         user_data = user_data_dict[update.effective_user.id]
         ai_response = get_full_response_from_ai(user_data)
 
-        # ارسال پاسخ نهایی
         await update.message.reply_text(ai_response)
         return ConversationHandler.END
-    except:
-        await update.message.reply_text("لطفاً عدد معتبری برای وزن وارد کن.")
+    except Exception as e:
+        print("خطای وزن:", e)
+        await update.message.reply_text("❗ لطفاً وزن را فقط با عدد وارد کن. مثلاً 75 یا 70.5")
         return WEIGHT
 
+# لغو
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("مکالمه لغو شد.")
     return ConversationHandler.END
 
-# اجرای اصلی
+# شروع برنامه
 def main():
     TOKEN = os.getenv("BOT_TOKEN")
     app = ApplicationBuilder().token(TOKEN).build()
