@@ -1,3 +1,4 @@
+
 import logging
 import os
 import requests
@@ -22,32 +23,33 @@ def fix_persian_numbers(text):
 
 def extract_number(text):
     text = fix_persian_numbers(text)
-    match = re.search(r'\d+(\.\d+)?', text)
-    if match:
-        return float(match.group())
-    else:
-        raise ValueError("no valid number found")
+    text = text.strip()
+    try:
+        return float(text)
+    except:
+        match = re.search(r'(\d+)(\.\d+)?', text)
+        if match:
+            return float(match.group())
+    raise ValueError("no valid number found")
 
 def call_ai(prompt):
     headers = {
-        "Authorization": f"Bearer {os.getenv('COHERE_API_KEY')}",
+        "Authorization": f"Bearer {os.getenv('GEMINI_API_KEY')}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": "command-r-plus",
-        "chat_history": [],
-        "message": prompt,
-        "temperature": 0.6,
-        "max_tokens": 1000
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}]
     }
-    response = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=data)
+    response = requests.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=" + os.getenv('GEMINI_API_KEY'),
+                             headers=headers, json=data)
     if response.status_code != 200:
         print("AI ERROR:", response.status_code, response.text)
         raise Exception("AI request failed")
-    return response.json()["text"]
+    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("به ربات هوش مصنوعی باشگاه ماکوان خوش آمدی!\nلطفاً سنت رو وارد کن:")
+    await update.message.reply_text("به ربات هوش مصنوعی باشگاه ماکوان خوش آمدی!
+لطفاً سنت رو وارد کن:")
     return AGE
 
 async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,7 +59,7 @@ async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("قدت به سانتی‌متر:")
         return HEIGHT
     except:
-        await update.message.reply_text("لطفاً فقط عدد وارد کن.")
+        await update.message.reply_text("لطفاً عدد معتبر وارد کن.")
         return AGE
 
 async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -76,12 +78,12 @@ async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data_dict[update.effective_user.id]["weight"] = weight
         await update.message.reply_text("در حال پردازش اطلاعات بدنی...")
         user = user_data_dict[update.effective_user.id]
-        prompt = f"""سن: {user['age']}، قد: {user['height']} سانتی‌متر، وزن: {user['weight']} کیلوگرم
+        prompt = f"سن: {user['age']}, قد: {user['height']} سانتی‌متر, وزن: {user['weight']} کیلوگرم
 شاخص توده بدنی کاربر را محاسبه کن و فقط به این صورت پاسخ بده:
 - شاخص توده بدنی شما: عدد
 - شما باید حدود X کیلو وزن کم یا زیاد کنید.
 - ورزش‌های مناسب برای شما:
-- لیست ۵ ورزش (فقط اسم‌ها، بدون هیچ توضیحی)"""
+- لیست ۵ ورزش (فقط اسم‌ها، بدون هیچ توضیحی)"
         response = call_ai(prompt)
         await update.message.reply_text(response, reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("برنامه غذایی", callback_data="diet"),
@@ -119,7 +121,8 @@ async def handle_grocery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     diet_prompt = context.user_data.get("diet_prompt", "")
-    prompt = f"بر اساس این برنامه غذایی، یک لیست خرید برای ۷ روز تهیه کن:\n{diet_prompt}"
+    prompt = f"بر اساس این برنامه غذایی، یک لیست خرید برای ۷ روز تهیه کن:
+{diet_prompt}"
     response = call_ai(prompt)
     await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("برنامه هفته بعد", callback_data="diet_next")],
