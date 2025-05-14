@@ -1,180 +1,69 @@
-import logging
 import os
-import requests
-import re
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes,
-    ConversationHandler, CallbackQueryHandler, filters
-)
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+import yt_dlp
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(TOKEN)
 
-AGE, HEIGHT, WEIGHT, MENU, DIET, WORKOUT, GROCERY, DIET_NEXT = range(8)
-user_data_dict = {}
+DOWNLOAD_DIR = "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+COOKIE_FILE = "instagram_cookies.txt"
+user_links = {}
 
-def fix_persian_numbers(text):
-    persian_digits = "۰۱۲۳۴۵۶۷۸۹"
-    english_digits = "0123456789"
-    table = str.maketrans("".join(persian_digits), "".join(english_digits))
-    return text.translate(table)
-
-def extract_number(text):
-    text = fix_persian_numbers(text)
-    match = re.search(r'\d+(\.\d+)?', text)
-    if match:
-        return float(match.group())
-    else:
-        raise ValueError("no valid number found")
-
-def call_ai(prompt):
-    headers = {
-        "Authorization": f"Bearer {os.getenv('COHERE_API_KEY')}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": "command-r-plus",
-        "chat_history": [],
-        "message": prompt,
-        "temperature": 0.6,
-        "max_tokens": 1000
-    }
-    response = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=data)
-    if response.status_code != 200:
-        print("AI ERROR:", response.status_code, response.text)
-        raise Exception("AI request failed")
-    return response.json()["text"]
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("به ربات هوش مصنوعی باشگاه ماکوان خوش آمدی!\nلطفاً سنت رو وارد کن:")
-    return AGE
-
-async def get_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        age = extract_number(update.message.text)
-        user_data_dict[update.effective_user.id] = {"age": age}
-        await update.message.reply_text("قدت به سانتی‌متر:")
-        return HEIGHT
-    except:
-        await update.message.reply_text("لطفاً فقط عدد وارد کن.")
-        return AGE
-
-async def get_height(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        height = extract_number(update.message.text)
-        user_data_dict[update.effective_user.id]["height"] = height
-        await update.message.reply_text("وزنت به کیلوگرم:")
-        return WEIGHT
-    except:
-        await update.message.reply_text("فقط عدد وارد کن.")
-        return HEIGHT
-
-async def get_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        weight = extract_number(update.message.text)
-        user_data_dict[update.effective_user.id]["weight"] = weight
-        await update.message.reply_text("در حال پردازش اطلاعات بدنی...")
-        user = user_data_dict[update.effective_user.id]
-        prompt = f"""سن: {user['age']}، قد: {user['height']} سانتی‌متر، وزن: {user['weight']} کیلوگرم
-شاخص توده بدنی کاربر را محاسبه کن و فقط به این صورت پاسخ بده:
-- شاخص توده بدنی شما: عدد
-- شما باید حدود X کیلو وزن کم یا زیاد کنید.
-- ورزش‌های مناسب برای شما:
-- لیست ۵ ورزش (فقط اسم‌ها، بدون هیچ توضیحی)"""
-        response = call_ai(prompt)
-        await update.message.reply_text(response, reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("برنامه غذایی", callback_data="diet"),
-             InlineKeyboardButton("برنامه ورزشی", callback_data="workout")]
-        ]))
-        return MENU
-    except Exception as e:
-        print("وزن خطا:", e)
-        await update.message.reply_text("لطفاً عدد معتبر وارد کن.")
-        return WEIGHT
-
-async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "diet":
-        prompt = "برنامه رژیم غذایی دقیق برای ۷ روز بنویس. فقط برای هر روز، صبحانه، ناهار، شام و میان‌وعده بنویس. توضیح اضافه نده."
-        context.user_data["diet_prompt"] = prompt
-        response = call_ai(prompt)
-        await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("تبدیل به لیست خرید", callback_data="grocery")],
-            [InlineKeyboardButton("برنامه هفته بعد", callback_data="diet_next")],
-            [InlineKeyboardButton("منوی اصلی", callback_data="main_menu")]
-        ]))
-        return DIET
-    elif query.data == "workout":
-        prompt = "برنامه تمرینی سبک ۷ روزه برای منزل بنویس. فقط تمرینات، بدون هیچ توضیح اضافی."
-        response = call_ai(prompt)
-        await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("برنامه هفته بعد", callback_data="workout_next")],
-            [InlineKeyboardButton("منوی اصلی", callback_data="main_menu")]
-        ]))
-        return WORKOUT
-
-async def handle_grocery(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    diet_prompt = context.user_data.get("diet_prompt", "")
-    prompt = f"بر اساس این برنامه غذایی، یک لیست خرید برای ۷ روز تهیه کن:\n{diet_prompt}"
-    response = call_ai(prompt)
-    await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("برنامه هفته بعد", callback_data="diet_next")],
-        [InlineKeyboardButton("منوی اصلی", callback_data="main_menu")]
-    ]))
-    return GROCERY
-
-async def handle_diet_next(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    prompt = "برنامه رژیم هفته دوم رو بنویس. فقط غذاها، بدون هیچ توضیحی."
-    response = call_ai(prompt)
-    await query.edit_message_text(response, reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("منوی اصلی", callback_data="main_menu")]
-    ]))
-    return DIET_NEXT
-
-async def handle_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("لطفاً مسیر مورد نظرت را انتخاب کن:", reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("برنامه غذایی", callback_data="diet"),
-         InlineKeyboardButton("برنامه ورزشی", callback_data="workout")]
-    ]))
-    return MENU
-
-async def handle_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    return await start(update, context)
-
-def main():
-    TOKEN = os.getenv("BOT_TOKEN")
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            AGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_age)],
-            HEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_height)],
-            WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_weight)],
-            MENU: [CallbackQueryHandler(handle_menu)],
-            DIET: [CallbackQueryHandler(handle_grocery, pattern="^grocery$"),
-                   CallbackQueryHandler(handle_diet_next, pattern="^diet_next$"),
-                   CallbackQueryHandler(handle_main_menu, pattern="^main_menu$")],
-            WORKOUT: [CallbackQueryHandler(handle_main_menu, pattern="^main_menu$")],
-            GROCERY: [CallbackQueryHandler(handle_diet_next, pattern="^diet_next$"),
-                      CallbackQueryHandler(handle_main_menu, pattern="^main_menu$")],
-            DIET_NEXT: [CallbackQueryHandler(handle_main_menu, pattern="^main_menu$")],
-        },
-        fallbacks=[CallbackQueryHandler(handle_restart, pattern="^restart$")]
+@bot.message_handler(commands=['start'])
+def welcome(message):
+    bot.send_message(
+        message.chat.id,
+        "👋 سلام! لینک پست، استوری یا هایلایت اینستاگرام رو بفرست. اگر محتوای خصوصی باشه هم مشکلی نیست!"
     )
 
-    app.add_handler(conv_handler)
-    app.run_polling()
+@bot.message_handler(func=lambda m: 'instagram.com' in m.text)
+def handle_link(message):
+    user_links[message.chat.id] = message.text
 
-if __name__ == "__main__":
-    main()
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("📥 دانلود محتوا", callback_data="download"))
+    bot.send_message(message.chat.id, "✅ لینک دریافت شد. برای ادامه روی دکمه کلیک کن:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "download")
+def download_content(call):
+    chat_id = call.message.chat.id
+    url = user_links.get(chat_id)
+    bot.send_message(chat_id, "⏳ در حال پردازش لینک اینستاگرام...")
+
+    try:
+        ydl_opts = {
+            'outtmpl': f'{DOWNLOAD_DIR}/%(title)s.%(ext)s',
+            'quiet': True,
+            'noplaylist': True,
+            'cookiefile': COOKIE_FILE
+        }
+
+        downloaded_files = []
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+
+            if 'entries' in info:
+                for entry in info['entries']:
+                    path = ydl.prepare_filename(entry)
+                    ext = entry.get('ext', 'mp4')
+                    downloaded_files.append((path, ext))
+            else:
+                path = ydl.prepare_filename(info)
+                ext = info.get('ext', 'mp4')
+                downloaded_files.append((path, ext))
+
+        for file_path, ext in downloaded_files:
+            with open(file_path, 'rb') as f:
+                if ext in ['jpg', 'jpeg', 'png']:
+                    bot.send_photo(chat_id, f)
+                elif ext == 'mp4':
+                    bot.send_video(chat_id, f)
+                else:
+                    bot.send_document(chat_id, f)
+            os.remove(file_path)
+
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ خطا در دانلود:\n{e}")
